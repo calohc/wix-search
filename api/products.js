@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const response = await fetch('https://www.wixapis.com/catalog/v3/products/query', {
+    const response = await fetch('https://www.wixapis.com/stores/v3/products/search', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -22,7 +22,10 @@ export default async function handler(req, res) {
         'wix-site-id': process.env.WIX_SITE_ID,
       },
       body: JSON.stringify({
-        filter: { name: { $contains: q } },
+        search: {
+          expression: q,
+          fields: ['name', 'description']
+        },
         paging: { limit: 10 }
       })
     });
