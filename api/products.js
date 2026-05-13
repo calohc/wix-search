@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const response = await fetch('https://www.wixapis.com/stores/v3/products/query', {
+    const response = await fetch('https://www.wixapis.com/stores/v3/products/search', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -22,10 +22,11 @@ export default async function handler(req, res) {
         'wix-site-id': process.env.WIX_SITE_ID,
       },
       body: JSON.stringify({
-        filter: {
-          name: { $contains: q }
+        search: {
+          expression: q,
+          fields: ['name']
         },
-        cursorPaging: { limit: 5 }
+        cursorPaging: { limit: 100 }
       })
     });
 
@@ -36,8 +37,17 @@ export default async function handler(req, res) {
     }
 
     const data = await response.json();
-    console.log('Query:', q, '| Total returned:', data.products?.length, '| First product:', data.products?.[0]?.name);
-    const products = (data.products || []).map(p => ({
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const allProducts = data.products || [];
+
+    // Keep only products whose name contains all query words
+    const filtered = allProducts.filter(p => {
+      const name = (p.name || '').toLowerCase();
+      return words.every(w => name.includes(w));
+    }).slice(0, 5);
+
+    console.log('Query:', q, '| API returned:', allProducts.length, '| After filter:', filtered.length);
+    const products = filtered.map(p => ({
       id: p.id,
       name: p.name,
       price: p.priceData?.formatted?.price || '',
