@@ -31,20 +31,19 @@ export default async function handler(req, res) {
   }
 }
 
-// In-memory cache — persists for the lifetime of the serverless function instance
 let cache = null;
 let cacheTime = 0;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 5 * 60 * 1000;
 
 async function getAllProducts() {
   const now = Date.now();
   if (cache && (now - cacheTime) < CACHE_TTL) {
-    console.log('Using cached catalog:', cache.length, 'products');
     return cache;
   }
 
   const products = [];
   let cursor = null;
+  let page = 1;
 
   while (true) {
     const body = { cursorPaging: { limit: 100 } };
@@ -67,21 +66,39 @@ async function getAllProducts() {
     }
 
     const data = await response.json();
-    const page = data.products || [];
+    const batch = data.products || [];
+    products.push(...batch.map(p => ({
+      id: p.id,
+      name: p.name,
+      price: p.priceData?.formatted?.price || '',
+      image: p.media?.mainMedia?.image?.url || null,
+      url: p.slug ? `https://www.${process.env.WIX_SITE_DOMAIN}/product-page/${p.slug}` : null,
+    })));
 
-    for (const p of page) {
-      products.push({
-        id: p.id,
-        name: p.name,
-        price: p.priceData?.formatted?.price || '',
-        image: p.media?.mainMedia?.image?.url || null,
-        url: p.slug ? `https://www.${process.env.WIX_SITE_DOMAIN}/product-page/${p.slug}` : null,
-      });
+    // Log the full pagination metadata on first page so we can see the structure
+    if (page === 1) {
+      console.log('Page 1 metadata:', JSON.stringify(data.metadata));
+      console.log('Page 1 top-level keys:', Object.keys(data));
     }
 
-    const nextCursor = data.metadata?.cursors?.next;
-    if (!nextCursor || page.length < 100) break;
+    console.log(`Page ${page}: fetched ${batch.length}, total so far: ${products.length}`);
+
+    // Try every known cursor location
+    const nextCursor =
+      data.metadata?.cursors?.next ||
+      data.metadata?.cursor?.next ||
+      data.pagingMetadata?.cursors?.next ||
+      data.pagingMetadata?.cursor ||
+      data.nextCursor ||
+      null;
+
+    if (!nextCursor || batch.length < 100) {
+      console.log('Stopping pagination. nextCursor:', nextCursor, '| batch.length:', batch.length);
+      break;
+    }
+
     cursor = nextCursor;
+    page++;
   }
 
   console.log('Fetched full catalog:', products.length, 'products');
