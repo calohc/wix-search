@@ -83,12 +83,17 @@
     .clear-btn.visible { display: flex; }
 
     .results {
-      margin-top: 6px;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 2px);
       border: 1.5px solid #222;
       border-radius: 2px;
       background: #fff;
       overflow: hidden;
       display: none;
+      z-index: 999999;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
     }
 
     .results.visible { display: block; }
@@ -256,8 +261,14 @@
       if (input.value.trim().length >= 2) results.classList.add('visible');
     });
 
+    function sendHeight() {
+      const h = document.body.scrollHeight;
+      window.parent.postMessage({ type: 'wix-search-height', height: h }, '*');
+    }
+
     function hideResults() {
       results.classList.remove('visible');
+      sendHeight();
     }
 
     function showLoading() {
@@ -291,9 +302,9 @@
         resultMeta.textContent = `${count} result${count !== 1 ? 's' : ''}`;
 
         resultList.innerHTML = data.products.map(p => `
-          <a class="result-item" href="${p.url || '#'}" target="_parent">
+          <div class="result-item" onclick="navigateTo('${escHtml(p.url || '')}')">
             ${p.image
-              ? `<img class="result-thumb" src="${p.image}" alt="${p.name}" loading="lazy" />`
+              ? `<img class="result-thumb" src="${p.image}" alt="${escHtml(p.name)}" loading="lazy" />`
               : `<div class="result-thumb-placeholder"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`
             }
             <div class="result-info">
@@ -303,11 +314,22 @@
             <span class="result-arrow">
               <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </span>
-          </a>
+          </div>
         `).join('');
+
+        sendHeight();
 
       } catch (e) {
         showError();
+      }
+    }
+
+    function navigateTo(url) {
+      if (!url) return;
+      try {
+        window.top.location.href = url;
+      } catch(e) {
+        window.location.href = url;
       }
     }
 
