@@ -35,20 +35,14 @@ let cache = null;
 let cacheTime = 0;
 const CACHE_TTL = 5 * 60 * 1000;
 
-async function getAllProducts() {
-  const now = Date.now();
-  if (cache && (now - cacheTime) < CACHE_TTL) {
-    return cache;
-  }
+async function fetchPage(cursor) {
+  const body = { cursorPaging: { limit: 100 } };
+  if (cursor) body.cursorPaging.cursor = cursor;
 
-  const products = [];
-  let cursor = null;
-  let page = 1;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
 
-  while (true) {
-    const body = { cursorPaging: { limit: 100 } };
-    if (cursor) body.cursorPaging.cursor = cursor;
-
+  try {
     const response = await fetch('https://www.wixapis.com/stores/v3/products/query', {
       method: 'POST',
       headers: {
@@ -56,16 +50,53 @@ async function getAllProducts() {
         'Authorization': process.env.WIX_API_KEY,
         'wix-site-id': process.env.WIX_SITE_ID,
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const err = await response.text();
       console.error('Wix API error:', err);
+      return null;
+    }
+
+    return await response.json();
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error('Fetch error:', err.message);
+    return null;
+  }
+}
+
+async function getAllProducts() {
+  const now = Date.now();
+  if (cache && (now - cacheTime) < CACHE_TTL) {
+    console.log('Cache hit:', cache.length, 'products');
+    return cache;
+  }
+
+  const products = [];
+  let cursor = null;
+  const MAX_PAGES = 20; // Safety cap — handles up to 2000 products
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    console.log(`Fetching page ${page}, cursor: ${cursor ? cursor.substring(0, 20) + '...' : 'none'}`);
+
+    const data = await fetchPage(cursor);
+
+    if (!data) {
+      console.log('Null response, stopping at page', page);
       break;
     }
 
-    const data = await response.json();
+    // Log full response structure on first page
+    if (page === 1) {
+      const { products: _p, ...rest } = data;
+      console.log('Response structure (no products):', JSON.stringify(rest));
+    }
+
     const batch = data.products || [];
     products.push(...batch.map(p => ({
       id: p.id,
@@ -75,15 +106,14 @@ async function getAllProducts() {
       url: p.slug ? `https://www.${process.env.WIX_SITE_DOMAIN}/product-page/${p.slug}` : null,
     })));
 
-    // Log the full pagination metadata on first page so we can see the structure
-    if (page === 1) {
-      console.log('Page 1 metadata:', JSON.stringify(data.metadata));
-      console.log('Page 1 top-level keys:', Object.keys(data));
+    console.log(`Page ${page}: got ${batch.length} products, total: ${products.length}`);
+
+    if (batch.length < 100) {
+      console.log('Last page reached');
+      break;
     }
 
-    console.log(`Page ${page}: fetched ${batch.length}, total so far: ${products.length}`);
-
-    // Try every known cursor location
+    // Try every known cursor location in Wix API responses
     const nextCursor =
       data.metadata?.cursors?.next ||
       data.metadata?.cursor?.next ||
@@ -92,16 +122,17 @@ async function getAllProducts() {
       data.nextCursor ||
       null;
 
-    if (!nextCursor || batch.length < 100) {
-      console.log('Stopping pagination. nextCursor:', nextCursor, '| batch.length:', batch.length);
+    console.log('Next cursor found:', nextCursor ? nextCursor.substring(0, 30) + '...' : 'none');
+
+    if (!nextCursor) {
+      console.log('No next cursor, stopping');
       break;
     }
 
     cursor = nextCursor;
-    page++;
   }
 
-  console.log('Fetched full catalog:', products.length, 'products');
+  console.log('Full catalog fetched:', products.length, 'products');
   cache = products;
   cacheTime = now;
   return products;
