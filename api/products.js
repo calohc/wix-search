@@ -22,11 +22,8 @@ export default async function handler(req, res) {
         'wix-site-id': process.env.WIX_SITE_ID,
       },
       body: JSON.stringify({
-        search: {
-          expression: q,
-          fields: ['name', 'description']
-        },
-        paging: { limit: 10 }
+        filter: { name: { $contains: q } },
+        paging: { limit: 5 }
       })
     });
 
