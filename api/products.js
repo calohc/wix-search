@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const response = await fetch('https://www.wixapis.com/stores/v1/products/query', {
+    const response = await fetch('https://www.wixapis.com/catalog/v3/products/query', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -22,10 +22,8 @@ export default async function handler(req, res) {
         'wix-site-id': process.env.WIX_SITE_ID,
       },
       body: JSON.stringify({
-        query: {
-          filter: JSON.stringify({ name: { $contains: q } }),
-          paging: { limit: 10 }
-        }
+        filter: { name: { $contains: q } },
+        paging: { limit: 10 }
       })
     });
 
@@ -39,7 +37,7 @@ export default async function handler(req, res) {
     const products = (data.products || []).map(p => ({
       id: p.id,
       name: p.name,
-      price: p.price?.formatted?.price || '',
+      price: p.priceData?.formatted?.price || '',
       image: p.media?.mainMedia?.image?.url || null,
       url: p.slug ? `https://www.${process.env.WIX_SITE_DOMAIN}/product-page/${p.slug}` : null,
     }));
